@@ -1,5 +1,7 @@
 import json
 import pathlib
+import glob
+import os
 
 from ban.commands import command, report
 from ban.core.models import (HouseNumber, Locality, Municipality, Position,
@@ -14,15 +16,49 @@ __namespace__ = 'import'
 @command
 def ignsna(path):
     """Import from IGN/Laposte BDUNI"""
-    files = [] 
-    for p in pathlib.Path(path).iterdir():
-         if p.is_file():
-             files.append(p)
-    
-    print(files)
+
+    municipality_zipcode_file = glob.glob(os.path.join(path, 'hsp7*.ai'))
+    street_file = glob.glob(os.path.join(path, 'hsv7*.ai'))
+    number_file = glob.glob(os.path.join(path, 'hsw4*.ai'))
+
+    print(municipality_zipcode_file)
+    print(street_file)
+    print(number_file)
+
+    if municipality_zipcode_file is not None:
+        process_municipality_file(municipality_zipcode_file)
+
+    if street_file is not None:
+        process_streetFile(street_file)
+
+    if number_file is not None:
+        process_numberFile(number_file)
+
+
     #max_value = sum(1 for line in iter_file(path))
     #rows = iter_file(path, formatter=json.loads)
     #batch(process_row, rows, chunksize=100, max_value=max_value)
+
+
+def process_municipality_file(municipality_zip_code_file):
+    max_value = sum(1 for line in iter_file(municipality_zip_code_file))
+    f = open(municipality_zip_code_file)
+    lines = f.readlines()
+    for x in range(2, max_value):
+        line = lines[x]
+        if line[8:9] == 'M':
+            pass
+    #rows = iter_file(path, formatter=json.loads)
+    #batch(process_row, rows, chunksize=100, max_value=max_value)
+    pass
+
+
+def process_streetFile(streetfile):
+    pass
+
+
+def process_numberFile(numberfile):
+    pass
 
 
 @session
