@@ -40,17 +40,27 @@ def ignsna(path):
     #rows = iter_file(path, formatter=json.loads)
     #batch(process_row, rows, chunksize=100, max_value=max_value)
 
-def process_muinipalityFile(municipalityZipCodefile):
-    #max_value = sum(1 for line in iter_file(path))
+
+def process_municipality_file(municipality_zip_code_file):
+    max_value = sum(1 for line in iter_file(municipality_zip_code_file))
+    f = open(municipality_zip_code_file)
+    lines = f.readlines()
+    for x in range(2, max_value):
+        line = lines[x]
+        if line[8:9] == 'M':
+            pass
     #rows = iter_file(path, formatter=json.loads)
     #batch(process_row, rows, chunksize=100, max_value=max_value)
     pass
 
+
 def process_streetFile(streetfile):
     pass
 
+
 def process_numberFile(numberfile):
     pass
+
 
 @session
 def process_row(metadata):
