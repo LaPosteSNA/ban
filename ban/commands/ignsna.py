@@ -1,5 +1,7 @@
 import json
 import pathlib
+import os
+import glob
 
 from ban.commands import command, report
 from ban.core.models import (HouseNumber, Locality, Municipality, Position,
@@ -11,19 +13,44 @@ from .helpers import batch, iter_file, session
 __namespace__ = 'import'
 
 
+
 @command
 def ignsna(path):
     """Import from IGN/Laposte BDUNI"""
-    files = [] 
-    for p in pathlib.Path(path).iterdir():
-         if p.is_file():
-             files.append(p)
-    
-    print(files)
+
+    municipalityZipCodefile = glob.glob(os.path.join(path,'hsp7*.ai'))
+    streetfile = glob.glob(os.path.join(path,'hsv7*.ai'))
+    numberfile = glob.glob(os.path.join(path,'hsw4*.ai'))
+
+    print(municipalityZipCodefile)
+    print(streetfile)
+    print(numberfile)
+
+    if municipalityZipCodefile is not None:
+        process_muinipalityFile(municipalityZipCodefile)
+
+    if streetfile is not None:
+        process_streetFile(streetfile)
+
+    if numberfile is not None:
+        process_numberFile(numberfile)
+
+
     #max_value = sum(1 for line in iter_file(path))
     #rows = iter_file(path, formatter=json.loads)
     #batch(process_row, rows, chunksize=100, max_value=max_value)
 
+def process_muinipalityFile(municipalityZipCodefile):
+    #max_value = sum(1 for line in iter_file(path))
+    #rows = iter_file(path, formatter=json.loads)
+    #batch(process_row, rows, chunksize=100, max_value=max_value)
+    pass
+
+def process_streetFile(streetfile):
+    pass
+
+def process_numberFile(numberfile):
+    pass
 
 @session
 def process_row(metadata):

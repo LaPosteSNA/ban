@@ -13,7 +13,7 @@ from .versioning import Versioned, BaseVersioned
 from .resource import ResourceModel, BaseResource
 
 __all__ = ['Municipality', 'Street', 'HouseNumber', 'Locality',
-           'Position']
+           'Position', 'ZipCode']
 
 
 _ = lambda x: x
@@ -103,6 +103,10 @@ class Street(BaseFantoirModel):
     pass
 
 
+class ZipCode(BaseFantoirModel):
+    pass
+
+
 class HouseNumber(TrackedModel):
     identifiers = ['cia']
     resource_fields = ['number', 'ordinal', 'street', 'cia']
@@ -175,3 +179,7 @@ class Position(TrackedModel):
     @property
     def center_json(self):
         return {'lat': self.center[1], 'lon': self.center[0]}
+
+
+
+
