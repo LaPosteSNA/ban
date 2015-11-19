@@ -77,6 +77,12 @@ class Street(BaseFantoirModel):
     pass
 
 
+class ZipCode(Model):
+    resource_fields = ['name', 'municipality']
+
+    municipality = db.ForeignKeyField(Municipality)
+
+
 class HouseNumber(Model):
     identifiers = ['cia']
     resource_fields = ['number', 'ordinal', 'street', 'cia']

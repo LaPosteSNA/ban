@@ -8,7 +8,7 @@ from .helpers import abort, confirm
 models = [Version, Diff, amodels.User, amodels.Client, amodels.Grant,
           amodels.Session, amodels.Token, cmodels.Municipality,
           cmodels.Street, cmodels.Locality, cmodels.HouseNumber,
-          cmodels.Position]
+          cmodels.Position, cmodels.ZipCode]
 
 
 @command
