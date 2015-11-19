@@ -9,7 +9,7 @@ from .versioning import Versioned, BaseVersioned
 from .resource import ResourceModel, BaseResource
 
 __all__ = ['Municipality', 'Street', 'HouseNumber', 'Locality',
-           'Position']
+           'Position', 'ZipCode']
 
 
 _ = lambda x: x
@@ -155,3 +155,7 @@ class Position(Model):
     @property
     def center_json(self):
         return {'lat': self.center[1], 'lon': self.center[0]}
+
+
+
+
