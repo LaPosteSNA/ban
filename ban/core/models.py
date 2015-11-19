@@ -103,8 +103,10 @@ class Street(BaseFantoirModel):
     pass
 
 
-class ZipCode(BaseFantoirModel):
-    pass
+class ZipCode(NamedModel):
+    resource_fields = ['name', 'municipality']
+
+    municipality = db.ForeignKeyField(Municipality)
 
 
 class HouseNumber(TrackedModel):

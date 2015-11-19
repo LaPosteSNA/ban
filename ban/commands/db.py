@@ -10,7 +10,7 @@ from .helpers import prompt
 models = [Version, amodels.User, amodels.Client, amodels.Grant,
           amodels.Session, amodels.Token, cmodels.Municipality,
           cmodels.Street, cmodels.Locality, cmodels.HouseNumber,
-          cmodels.Position]
+          cmodels.Position, cmodels.ZipCode]
 
 
 @command

@@ -9,3 +9,4 @@ build/
 .pydevproject
 .settings/
 .idea/
+.idea/*

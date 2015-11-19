@@ -47,7 +47,7 @@ def process_municipality_file(municipality_zip_code_file):
     lines = f.readlines()
     for x in range(2, max_value):
         line = lines[x]
-        if line[8:9] == 'M':
+        if line[51] == 'M':
             pass
     #rows = iter_file(path, formatter=json.loads)
     #batch(process_row, rows, chunksize=100, max_value=max_value)
