@@ -2,10 +2,11 @@ import json
 import pathlib
 import glob
 import os
+from progressbar import ProgressBar
 
 from ban.commands import command, report
 from ban.core.models import (HouseNumber, Locality, Municipality, Position,
-                             Street)
+                             Street, ZipCode)
 
 from .helpers import batch, iter_file, session
 
@@ -26,7 +27,7 @@ def ignsna(path):
     print(number_file)
 
     if municipality_zipcode_file is not None:
-        process_municipality_file(municipality_zipcode_file)
+        process_municipality_file(municipality_zipcode_file[0])
 
     if street_file is not None:
         process_streetFile(street_file)
@@ -39,18 +40,31 @@ def ignsna(path):
     #rows = iter_file(path, formatter=json.loads)
     #batch(process_row, rows, chunksize=100, max_value=max_value)
 
-
+@session
 def process_municipality_file(municipality_zip_code_file):
     max_value = sum(1 for line in iter_file(municipality_zip_code_file))
     f = open(municipality_zip_code_file)
     lines = f.readlines()
-    for x in range(2, max_value):
+    pbar = ProgressBar()
+    for x in pbar(range(2, max_value)):
         line = lines[x]
-        if line[51] == 'M':
-            pass
-    #rows = iter_file(path, formatter=json.loads)
-    #batch(process_row, rows, chunksize=100, max_value=max_value)
-    pass
+        if line[50] == 'M':
+            insee = line[6:11]
+            name = line[11:49]
+            zip_code = line[89:94]
+            old_insee = line[126:131]
+
+            try:
+                municipality = Municipality.get(Municipality.insee == insee)
+
+            except Municipality.DoesNotExist:
+                data = dict(insee=insee, name=name, siren='99999', version='1')
+                validator = Municipality.validator(**data)
+                if not validator.errors:
+                    validator.save(validator)
+                else:
+                    return report('Error', validator.errors)
+
 
 
 def process_streetFile(streetfile):
