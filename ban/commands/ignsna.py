@@ -1,15 +1,11 @@
-import json
-import pathlib
 import glob
 import os
 from progressbar import ProgressBar
 
 from ban.commands import command, report
 from ban.core.models import (HouseNumber, Locality, Municipality, Position,
-                             Street, ZipCode)
-
-from .helpers import batch, iter_file, session
-
+                             Street)
+from .helpers import iter_file, session
 
 __namespace__ = 'import'
 
@@ -25,9 +21,10 @@ def ignsna(path):
     print(municipality_zipcode_file)
     print(street_file)
     print(number_file)
-
+    import ipdb; ipdb.set_trace()
     if municipality_zipcode_file is not None:
         process_municipality_file(municipality_zipcode_file[0])
+
 
     if street_file is not None:
         process_streetFile(street_file[0])
