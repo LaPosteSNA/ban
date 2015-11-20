@@ -30,10 +30,10 @@ def ignsna(path):
         process_municipality_file(municipality_zipcode_file[0])
 
     if street_file is not None:
-        process_streetFile(street_file)
+        process_streetFile(street_file[0])
 
     if number_file is not None:
-        process_numberFile(number_file)
+        process_numberFile(number_file[0])
 
 
     #max_value = sum(1 for line in iter_file(path))
@@ -42,11 +42,10 @@ def ignsna(path):
 
 @session
 def process_municipality_file(municipality_zip_code_file):
-    max_value = sum(1 for line in iter_file(municipality_zip_code_file))
-    f = open(municipality_zip_code_file)
-    lines = f.readlines()
+    max_value = get_max_line(municipality_zip_code_file)
+    lines = get_lines(municipality_zip_code_file)
     pbar = ProgressBar()
-    for x in pbar(range(2, max_value)):
+    for x in pbar(range(0, max_value)):
         line = lines[x]
         if line[50] == 'M':
             insee = line[6:11]
@@ -58,7 +57,7 @@ def process_municipality_file(municipality_zip_code_file):
                 municipality = Municipality.get(Municipality.insee == insee)
 
             except Municipality.DoesNotExist:
-                data = dict(insee=insee, name=name, siren='99999', version='1')
+                data = dict(insee=insee, name=name, siren='99999', version='1', zipcode= zip_code)
                 validator = Municipality.validator(**data)
                 if not validator.errors:
                     validator.save(validator)
@@ -66,9 +65,53 @@ def process_municipality_file(municipality_zip_code_file):
                     return report('Error', validator.errors)
 
 
+@session
+def process_streetFile(street_file):
+    max_value = get_max_line(street_file)
+    lines = get_lines(street_file)
+    pbar = ProgressBar()
+    for x in pbar(range(0, max_value)):
+        line = lines[x]
+        if line[0] == 'V':
+            insee = line[7:12]
+            name = line[60:92]
+            zip_code = line[109:114]
 
-def process_streetFile(streetfile):
-    pass
+
+            try:
+                municipality = Municipality.get(Municipality.insee == insee)
+
+            except Municipality.DoesNotExist:
+                return report('Error', 'Municipality does not exist: {}'.format(insee))
+
+            try:
+                street = Street.get(Street.name == name and Street.municipality == municipality.id)
+            except Street.DoesNotExist:
+                data = dict(
+                    name=name,
+                    municipality=municipality.id,
+                    version=1,
+                    fantoir=Street.tmp_fantoir(),
+                    zipcode=zip_code,
+                )
+                validator = Street.validator(**data)
+                if not validator.errors:
+                    item = validator.save()
+                else:
+                    report('Error', validator.errors)
+
+
+
+
+def get_lines(file):
+    f = open(file)
+    lines = f.readlines()
+    return lines
+
+
+def get_max_line(file):
+    max_value = sum(1 for line in iter_file(file))
+    return max_value
 
 
 def process_numberFile(numberfile):

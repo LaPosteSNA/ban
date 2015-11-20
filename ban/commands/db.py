@@ -5,10 +5,10 @@ from ban.core.versioning import Diff, Version
 
 from .helpers import abort, confirm
 
-models = [Version, Diff, amodels.User, amodels.Client, amodels.Grant,
-          amodels.Session, amodels.Token, cmodels.Municipality,
+models = [ Version, Diff, amodels.User, amodels.Client, amodels.Grant,
+          amodels.Session, amodels.Token, cmodels.Municipality, cmodels.ZipCode,
           cmodels.Street, cmodels.Locality, cmodels.HouseNumber,
-          cmodels.Position, cmodels.ZipCode]
+          cmodels.Position]
 
 
 @command

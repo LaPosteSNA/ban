@@ -51,12 +51,17 @@ class Municipality(NamedModel):
     siren = db.CharField(max_length=9)
 
 
+class ZipCode(NamedModel):
+    identifiers = ['name']
+
+
 class BaseFantoirModel(NamedModel):
     identifiers = ['fantoir']
-    resource_fields = ['name', 'fantoir', 'municipality']
+    resource_fields = ['name', 'fantoir', 'municipality', 'zipcode']
 
     fantoir = db.CharField(max_length=9, null=True)
     municipality = db.ForeignKeyField(Municipality)
+    zipcode = db.ForeignKeyField(ZipCode)
 
     class Meta:
         abstract = True
@@ -75,12 +80,6 @@ class Locality(BaseFantoirModel):
 
 class Street(BaseFantoirModel):
     pass
-
-
-class ZipCode(Model):
-    resource_fields = ['name', 'municipality']
-
-    municipality = db.ForeignKeyField(Municipality)
 
 
 class HouseNumber(Model):
