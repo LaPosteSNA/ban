@@ -9,7 +9,7 @@ from .versioning import Versioned, BaseVersioned
 from .resource import ResourceModel, BaseResource
 
 __all__ = ['Municipality', 'Street', 'HouseNumber', 'Locality',
-           'Position']
+           'Position', 'ZipCode']
 
 
 _ = lambda x: x
