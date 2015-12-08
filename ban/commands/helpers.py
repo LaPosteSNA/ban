@@ -1,4 +1,5 @@
 import csv
+import os
 import pkgutil
 import sys
 from concurrent.futures import ThreadPoolExecutor
@@ -6,10 +7,10 @@ from importlib import import_module
 from pathlib import Path
 
 import decorator
-from progressbar import ProgressBar
+import progressbar
 
 from ban.auth.models import Session, User
-from ban.core import context
+from ban.core import context, config
 from ban.core.versioning import Diff
 
 
@@ -52,16 +53,31 @@ def abort(msg):
     sys.exit(1)
 
 
+class Bar(progressbar.ProgressBar):
+
+    def __init__(self, *args, **kwargs):
+        kwargs['redirect_stdout'] = True
+        super().__init__(*args, **kwargs)
+
+    def default_widgets(self):
+        widgets = super().default_widgets()
+        if self.max_value:
+            # Simpler option to override the bar fill char…
+            widgets[5] = progressbar.widgets.Bar('█')
+        return widgets
+
+
 def bar(iterable, *args, **kwargs):
-    return ProgressBar(*args, **kwargs)(iterable)
+    return Bar(*args, **kwargs)(iterable)
 
 
 def batch(func, iterable, chunksize=1000, max_value=None):
-    pbar = ProgressBar(max_value=max_value).start()
-    with ThreadPoolExecutor(max_workers=4) as executor:
+    bar = Bar(max_value=max_value).start()
+    workers = int(config.get('WORKERS', os.cpu_count()))
+    with ThreadPoolExecutor(max_workers=workers) as executor:
         for i, res in enumerate(executor.map(func, iterable)):
-            pbar.update(i)
-        pbar.finish()
+            bar.update(i)
+        bar.finish()
 
 
 def prompt(text, default=None, confirmation=False, coerce=None):
@@ -131,9 +147,14 @@ def confirm(text, default=None):
 @decorator.decorator
 def session(func, *args, **kwargs):
     # TODO make configurable from command line
-    user = User.select(User.is_staff == True).first()
-    if not user:
-        abort('No admin user')
+    qs = User.select().select(User.is_staff == True)
+    username = config.get('SESSION_USER')
+    if username:
+        qs = qs.where(User.username == username)
+    try:
+        user = qs.get()
+    except User.DoesNotExist:
+        abort('Admin user not found {}'.format(username or ''))
     session = Session.create(user=user)
     context.set('session', session)
     return func(*args, **kwargs)

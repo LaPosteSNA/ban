@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 
 import factory
-from factory.fuzzy import FuzzyText
+from factory.fuzzy import FuzzyText, FuzzyInteger
 from factory_peewee import PeeweeModelFactory
 
 from ban.core import models
@@ -9,6 +9,12 @@ from ban.auth import models as auth_models
 
 
 class BaseTestModel(PeeweeModelFactory):
+
+    @classmethod
+    def _setup_next_sequence(cls, *args, **kwargs):
+        # Workaround https://github.com/cam-stitt/factory_boy-peewee/pull/6.
+        return 1
+
     class Meta:
         database = models.db
         abstract = True
@@ -63,6 +69,13 @@ class BaseFactory(BaseTestModel):
 
     class Meta:
         abstract = True
+
+
+class ZipCodeFactory(BaseFactory):
+    code = FuzzyInteger(10000, 97000)
+
+    class Meta:
+        model = models.ZipCode
 
 
 class MunicipalityFactory(BaseFactory):

@@ -2,11 +2,4 @@ __pycache__
 .cache
 *.sqlite3
 *.egg-info
-banenv/
-dist/*
-build/
-.project
-.pydevproject
-.settings/
-.idea/
-.idea/*
+tmp/

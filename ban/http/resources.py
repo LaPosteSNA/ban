@@ -1,9 +1,7 @@
-import re
 from urllib.parse import urlencode
 
 import falcon
 
-# from ban.auth.decorators import protected
 from ban.core import models
 from ban.auth import models as amodels
 
@@ -12,20 +10,6 @@ from .auth import auth
 
 
 __all__ = ['Municipality', 'Street', 'Locality', 'Housenumber', 'Position']
-
-
-def dispatch_route(method):
-    def wrapper(resource, req, resp, **params):
-        # TODO: custom router instead, so routes are compiled on load.
-        if 'route' in params:
-            name = 'on_{}_{}'.format(req.method.lower(), params['route'])
-            view = getattr(resource, name, None)
-            if view and callable(view):
-                return view(req, resp, **params)
-            else:
-                raise falcon.HTTPNotFound()
-        method(resource, req, resp, **params)
-    return wrapper
 
 
 class BaseCollection:
@@ -53,9 +37,17 @@ class BaseCollection:
         }
         url = '{}://{}{}'.format(req.protocol, req.host, req.path)
         if count > end:
-            kwargs['next'] = '{}?{}'.format(url, urlencode({'offset': end}))
+            query_string = req.params.copy()
+            query_string.update({'offset': end})
+            uri = '{}?{}'.format(url, urlencode(query_string))
+            kwargs['next'] = uri
+            resp.add_link(uri, 'next')
         if offset >= limit:
-            kwargs['previous'] = '{}?{}'.format(url, urlencode({'offset': offset - limit}))  # noqa
+            query_string = req.params.copy()
+            query_string.update({'offset': offset - limit})
+            uri = '{}?{}'.format(url, urlencode(query_string))
+            kwargs['previous'] = uri
+            resp.add_link(uri, 'previous')
         resp.json(**kwargs)
 
 
@@ -66,75 +58,63 @@ class WithURL(type):
     def __new__(mcs, name, bases, attrs, **kwargs):
         cls = super().__new__(mcs, name, bases, attrs)
         if hasattr(cls, 'model'):
-            for route in cls.routes():
-                app.add_route(route, cls())
+            app.register_resource(cls())
         return cls
 
 
-class URLMixin(object, metaclass=WithURL):
+class BaseCRUD(BaseCollection, metaclass=WithURL):
 
-    @classmethod
-    def base_url(cls):
-        return "/" + re.sub("([a-z])([A-Z])", "\g<1>/\g<2>", cls.__name__).lower()
-
-    @classmethod
-    def url_name(cls):
-        return re.sub("([a-z])([A-Z])", "\g<1>-\g<2>", cls.__name__).lower()
-
-    @classmethod
-    def url_path(cls):
-        return cls.base_url()
-
-
-class BaseCRUD(URLMixin, BaseCollection):
-
-    def not_found(self, msg='Not found'):
-        return self.error(404, msg)
-
-    def error(self, status=400, msg='Invalid request'):
-        return self.json(status, error=msg)
-
-    @classmethod
-    def routes(cls):
-        # Falcon does not allow to have those two routes in the same time:
-        # '/path/{id}'
-        # '/path/{identifier}:{id}'
-        return [
-            cls.base_url(),
-            # cls.base_url() + '/{id}',
-            cls.base_url() + '/{id}',
-            cls.base_url() + '/{id}/{route}',
-            cls.base_url() + '/{id}/{route}/{route_id}',
-        ]
-        # return cls.base_url() + r'(?:(?P<key>[\w_]+)/(?P<ref>[\w_]+)/(?:(?P<route>[\w_]+)/(?:(?P<route_id>[\d]+)/)?)?)?$'  # noqa
-
-    def get_object(self, id, **kwargs):
+    def get_object(self, identifier, **kwargs):
         try:
-            return self.model.coerce(id)
+            return self.model.coerce(identifier)
         except self.model.DoesNotExist:
             raise falcon.HTTPNotFound()
 
-    @dispatch_route
+    def get_collection(self, req, resp, **params):
+        return self.model.select()
+
     def on_get(self, req, resp, **params):
+        """Get {resource} collection."""
+        qs = self.get_collection(req, resp, **params)
+        self.collection(req, resp, qs.as_resource())
+
+    @app.endpoint(path='/{identifier}')
+    def on_get_resource(self, req, resp, **params):
+        """Get {resource} with 'identifier'."""
         instance = self.get_object(**params)
         resp.json(**instance.as_resource)
 
     @auth.protect
-    def on_post(self, req, resp, *args, **kwargs):
-        if 'id' in kwargs:
-            instance = self.get_object(**kwargs)
-        else:
-            instance = None
-        self.save_object(req.params, req, resp, instance, **kwargs)
+    @app.endpoint(path='/{identifier}')
+    def on_post_resource(self, req, resp, *args, **params):
+        """Patch {resource} with 'identifier'."""
+        instance = self.get_object(**params)
+        self.save_object(req.params, req, resp, instance, **params)
 
     @auth.protect
-    def on_put(self, req, resp, *args, **kwargs):
-        instance = self.get_object(**kwargs)
+    def on_post(self, req, resp, *args, **params):
+        """Create {resource}"""
+        self.save_object(req.params, req, resp, **params)
+
+    @auth.protect
+    @app.endpoint(path='/{identifier}')
+    def on_put_resource(self, req, resp, *args, **params):
+        """Update {resource}"""
+        instance = self.get_object(**params)
         data = req.json
-        self.save_object(data, req, resp, instance, **kwargs)
+        self.save_object(data, req, resp, instance, **params)
+
+    @auth.protect
+    @app.endpoint(path='/{identifier}')
+    def on_patch_resource(self, req, resp, *args, **params):
+        """Patch {resource}"""
+        instance = self.get_object(**params)
+        data = req.json
+        self.save_object(data, req, resp, instance, **params)
 
     def save_object(self, data, req, resp, instance=None, **kwargs):
-        validator = self.model.validator(**data)
+        update = instance and req.method != 'PUT'
+        validator = self.model.validator(update=update, **data)
         if not validator.errors:
             try:
                 instance = validator.save(instance=instance)
@@ -143,48 +123,81 @@ class BaseCRUD(URLMixin, BaseCollection):
                 # Return original object.
                 instance = self.get_object(**kwargs)
             else:
-                status = falcon.HTTP_OK if 'id' in kwargs \
-                                                       else falcon.HTTP_CREATED
-            resp.status = str(status)
+                if 'identifier' in kwargs:
+                    status = falcon.HTTP_OK
+                else:
+                    status = falcon.HTTP_CREATED
+                    resp.set_header('Location',
+                                    self.resource_uri(req, instance))
+            resp.status = status
             resp.json(**instance.as_resource)
         else:
-            # See https://github.com/falconry/falcon/issues/627.
-            resp.status = str(422)
+            resp.status = falcon.HTTP_UNPROCESSABLE_ENTITY
             resp.json(errors=validator.errors)
 
 
 class VersionnedResource(BaseCRUD):
 
+    @app.endpoint('/{identifier}/versions')
     def on_get_versions(self, req, resp, *args, **kwargs):
+        """Get resource versions."""
         instance = self.get_object(**kwargs)
-        route_id = kwargs.get('route_id')
-        if route_id:
-            version = instance.load_version(route_id)
-            if not version:
-                raise falcon.HTTPNotFound()
-            resp.json(**version.as_resource)
-        else:
-            self.collection(req, resp, instance.versions.as_resource())
+        self.collection(req, resp, instance.versions.as_resource())
+
+    @app.endpoint('/{identifier}/versions/{version}')
+    def on_get_version(self, req, resp, version, **kwargs):
+        """Get {resource} version corresponding to 'version' number."""
+        instance = self.get_object(**kwargs)
+        version = instance.load_version(version)
+        if not version:
+            raise falcon.HTTPNotFound()
+        resp.json(**version.as_resource)
 
 
 class Position(VersionnedResource):
+    """Manipulate position resources."""
     model = models.Position
 
 
 class Housenumber(VersionnedResource):
     model = models.HouseNumber
 
-    def on_get_positions(self, *args, **kwargs):
+    def get_bbox(self, req):
+        bbox = {}
+        req.get_param_as_int('north', store=bbox)
+        req.get_param_as_int('south', store=bbox)
+        req.get_param_as_int('east', store=bbox)
+        req.get_param_as_int('west', store=bbox)
+        if any(v is None for v in bbox.values()):
+            return None
+        return bbox
+
+    def get_collection(self, req, resp, **kwargs):
+        qs = super().get_collection(req, resp, **kwargs)
+        bbox = self.get_bbox(req)
+        if bbox:
+            qs = (qs.join(models.Position)
+                    .where(models.Position.center.in_bbox(**bbox))
+                    .group_by(models.HouseNumber.id)
+                    .order_by(models.HouseNumber.id))
+        return qs
+
+    @app.endpoint('/{identifier}/positions')
+    def on_get_positions(self, req, resp, *args, **kwargs):
+        """Retrieve {resource} positions."""
         instance = self.get_object(**kwargs)
-        return self.collection(instance.position_set.as_resource)
+        qs = instance.position_set.as_resource_list()
+        self.collection(req, resp, qs)
 
 
 class Locality(VersionnedResource):
     model = models.Locality
 
-    def on_get_housenumbers(self, *args, **kwargs):
+    @app.endpoint('/{identifier}/housenumbers')
+    def on_get_housenumbers(self, req, resp, *args, **kwargs):
+        """Retrieve {resource} housenumbers."""
         instance = self.get_object(**kwargs)
-        return self.collection(instance.housenumber_set.as_resource)
+        self.collection(req, resp, instance.housenumber_set.as_resource_list())
 
 
 class Street(Locality):
@@ -194,13 +207,17 @@ class Street(Locality):
 class Municipality(VersionnedResource):
     model = models.Municipality
 
+    @app.endpoint('/{identifier}/streets')
     def on_get_streets(self, req, resp, *args, **kwargs):
+        """Retrieve {resource} streets."""
         instance = self.get_object(**kwargs)
-        self.collection(req, resp, instance.street_set.as_resource())
+        self.collection(req, resp, instance.street_set.as_resource_list())
 
+    @app.endpoint('/{identifier}/localities')
     def on_get_localities(self, req, resp, *args, **kwargs):
+        """Retrieve {resource} localities."""
         instance = self.get_object(**kwargs)
-        self.collection(req, resp, instance.locality_set.as_resource())
+        self.collection(req, resp, instance.locality_set.as_resource_list())
 
 
 class User(BaseCRUD):

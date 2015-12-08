@@ -1,0 +1,40 @@
+sudo: false
+
+language: python
+
+python:
+- '3.4'
+
+services:
+- postgresql
+
+addons:
+  postgresql: "9.4"
+
+env:
+  global:
+  - DB_USER=postgres
+
+cache:
+  directories:
+  - $HOME/.cache/pip
+
+install:
+- pip install cython
+- pip install -r requirements-dev.txt
+- python setup.py develop
+
+before_script:
+- psql -U postgres -c "CREATE DATABASE test_ban;"
+- psql -U postgres -c "create extension postgis" -d test_ban
+- psql -U postgres -c "create extension hstore" -d test_ban
+
+script: py.test
+
+notifications:
+  irc:
+    channels:
+    - irc.freenode.net##ban
+    on_success: change
+    on_failure: always
+  email: false

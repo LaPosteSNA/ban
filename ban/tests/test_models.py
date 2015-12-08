@@ -3,7 +3,7 @@ import pytest
 from ban.core import models
 
 from .factories import (HouseNumberFactory, MunicipalityFactory,
-                        PositionFactory, StreetFactory)
+                        PositionFactory, StreetFactory, ZipCodeFactory)
 
 
 def test_municipality_is_created_with_version_1():
@@ -48,6 +48,38 @@ def test_municipality_diff_contain_only_changed_data():
     assert len(diff.diff) == 1  # name, version
     assert 'insee' not in diff.diff
     assert diff.diff['name']['new'] == "Orvanne"
+
+
+def test_municipality_zipcodes():
+    zipcode1 = ZipCodeFactory(code="75010")
+    zipcode2 = ZipCodeFactory(code="75011")
+    municipality = MunicipalityFactory(name="Paris")
+    municipality.zipcodes.add(zipcode1)
+    municipality.zipcodes.add(zipcode2)
+    zipcodes = municipality.zipcodes
+    assert len(zipcodes) == 2
+    assert zipcode1 in zipcodes
+    assert zipcode2 in zipcodes
+
+
+def test_zipcode_municipalities():
+    zipcode = ZipCodeFactory(code="31310")
+    municipality1 = MunicipalityFactory(name="Montbrun-Bocage")
+    municipality2 = MunicipalityFactory(name="Montesquieu-Volvestre")
+    municipality1.zipcodes.add(zipcode)
+    municipality2.zipcodes.add(zipcode)
+    assert municipality1 in zipcode.municipalities
+    assert municipality2 in zipcode.municipalities
+
+
+def test_municipality_as_resource():
+    municipality = MunicipalityFactory(name="Montbrun-Bocage", insee="31365",
+                                       siren="210100566")
+    assert municipality.as_resource['name'] == "Montbrun-Bocage"
+    assert municipality.as_resource['insee'] == "31365"
+    assert municipality.as_resource['siren'] == "210100566"
+    assert municipality.as_resource['version'] == 1
+    assert municipality.as_resource['id'] == municipality.id
 
 
 def test_street_is_versioned():
@@ -137,7 +169,7 @@ def test_can_create_two_housenumbers_with_same_number_but_different_street():
 def test_housenumber_center():
     housenumber = HouseNumberFactory()
     position = PositionFactory(housenumber=housenumber)
-    assert housenumber.center == position.center_json
+    assert housenumber.center == position.center_resource
 
 
 def test_housenumber_center_without_position():
@@ -184,4 +216,5 @@ def test_get_instantiate_object_properly():
 ])
 def test_position_center_coerce(given, expected):
     position = PositionFactory(center=given)
-    assert models.Position.get(models.Position.id == position.id).center == expected  # noqa
+    center = models.Position.get(models.Position.id == position.id).center
+    assert center.coords == expected

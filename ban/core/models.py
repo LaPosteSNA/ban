@@ -1,7 +1,7 @@
 import re
 
-# from django.utils.translation import ugettext as _
 import peewee
+from postgis import Point
 from unidecode import unidecode
 
 from ban import db
@@ -9,7 +9,7 @@ from .versioning import Versioned, BaseVersioned
 from .resource import ResourceModel, BaseResource
 
 __all__ = ['Municipality', 'Street', 'HouseNumber', 'Locality',
-           'Position', 'ZipCode']
+           'Position']
 
 
 _ = lambda x: x
@@ -43,25 +43,27 @@ class NamedModel(Model):
         ordering = ('name', )
 
 
+class ZipCode(Model):
+    identifiers = ['code']
+    resource_fields = ['code', 'municipalities']
+    code = db.ZipCodeField()
+
+
 class Municipality(NamedModel):
     identifiers = ['siren', 'insee']
     resource_fields = ['name', 'insee', 'siren']
 
     insee = db.CharField(max_length=5)
     siren = db.CharField(max_length=9)
-
-
-class ZipCode(NamedModel):
-    identifiers = ['name']
+    zipcodes = db.ManyToManyField(ZipCode, related_name='municipalities')
 
 
 class BaseFantoirModel(NamedModel):
     identifiers = ['fantoir']
-    resource_fields = ['name', 'fantoir', 'municipality', 'zipcode']
+    resource_fields = ['name', 'fantoir', 'municipality']
 
     fantoir = db.CharField(max_length=9, null=True)
     municipality = db.ForeignKeyField(Municipality)
-    zipcode = db.ForeignKeyField(ZipCode)
 
     class Meta:
         abstract = True
@@ -91,12 +93,11 @@ class HouseNumber(Model):
     street = db.ForeignKeyField(Street, null=True)
     locality = db.ForeignKeyField(Locality, null=True)
     cia = db.CharField(max_length=100)
+    zipcode = db.ForeignKeyField(ZipCode, null=True)
 
     class Meta:
-        # Does not work, as SQL does not consider NULL has values. Is there
-        # any way to enforce that at the DB level anyway?
-        unique_together = ('number', 'ordinal', 'street', 'locality')
         resource_schema = {'cia': {'required': False}}
+        order_by = ('number', 'ordinal')
 
     def __str__(self):
         return ' '.join([self.number, self.ordinal])
@@ -134,7 +135,7 @@ class HouseNumber(Model):
     @property
     def center(self):
         position = self.position_set.first()
-        return position.center_json if position else None
+        return position.center.geojson if position else None
 
 
 class Position(Model):
@@ -152,9 +153,7 @@ class Position(Model):
         unique_together = ('housenumber', 'source')
 
     @property
-    def center_json(self):
-        return {'lat': self.center[1], 'lon': self.center[0]}
-
-
-
-
+    def center_resource(self):
+        if not isinstance(self.center, Point):
+            self.center = Point(*self.center)
+        return self.center.geojson

@@ -2,6 +2,7 @@ import peewee
 from cerberus import ValidationError, Validator, errors
 
 from ban import db
+from postgis import Point
 
 
 class ResourceValidator(Validator):
@@ -14,7 +15,7 @@ class ResourceValidator(Validator):
         super().__init__(model._meta.resource_schema, *args, **kwargs)
 
     def _validate_type_point(self, field, value):
-        if not isinstance(value, (str, list, tuple)):
+        if not isinstance(value, (str, list, tuple, Point)):
             self._error(field, 'Invalid Point: {}'.format(value))
 
     def _validate_coerce(self, coerce, field, value):
@@ -44,11 +45,22 @@ class ResourceQueryResultWrapper(peewee.ModelQueryResultWrapper):
         return instance.as_resource
 
 
+class ResourceListQueryResultWrapper(peewee.ModelQueryResultWrapper):
+
+    def process_row(self, row):
+        instance = super().process_row(row)
+        return instance.as_list
+
+
 class SelectQuery(db.SelectQuery):
 
     @peewee.returns_clone
     def as_resource(self):
         self._result_wrapper = ResourceQueryResultWrapper
+
+    @peewee.returns_clone
+    def as_resource_list(self):
+        self._result_wrapper = ResourceListQueryResultWrapper
 
 
 class BaseResource(peewee.BaseModel):
@@ -94,29 +106,47 @@ class ResourceModel(db.Model, metaclass=BaseResource):
         return schema
 
     @classmethod
-    def validator(cls, instance=None, **data):
+    def validator(cls, instance=None, update=False, **data):
         validator = ResourceValidator(cls, instance)
-        validator(data)
+        validator(data, update=update)
         return validator
 
     @classmethod
     def get_resource_fields(cls):
         return cls.resource_fields + ['id']
 
+    @classmethod
+    def get_list_fields(cls):
+        return cls.get_resource_fields() + ['resource']
+
+    @property
+    def resource(self):
+        return self.__class__.__name__.lower()
+
     @property
     def as_resource(self):
-        return {f: self.as_resource_field(f) for f in self.get_resource_fields()}
+        return {f: self.as_resource_field(f)
+                for f in self.get_resource_fields()}
+
+    @property
+    def as_list(self):
+        return {f: self.as_list_field(f) for f in self.get_list_fields()}
 
     @property
     def as_relation(self):
-        return {f: self.as_relation_field(f) for f in self.get_resource_fields()}
+        return {f: self.as_relation_field(f)
+                for f in self.get_resource_fields()}
 
     def as_resource_field(self, name):
-        value = getattr(self, '{}_json'.format(name), getattr(self, name))
+        value = getattr(self, '{}_resource'.format(name), getattr(self, name))
         return getattr(value, 'as_relation', value)
 
     def as_relation_field(self, name):
         value = getattr(self, name)
+        return getattr(value, 'id', value)
+
+    def as_list_field(self, name):
+        value = getattr(self, '{}_resource'.format(name), getattr(self, name))
         return getattr(value, 'id', value)
 
     @classmethod
@@ -130,4 +160,13 @@ class ResourceModel(db.Model, metaclass=BaseResource):
                 if identifier not in cls.identifiers + ['id']:
                     raise cls.DoesNotExist("Invalid identifier {}".format(
                                                                 identifier))
-        return cls.get(getattr(cls, identifier) == id)
+        try:
+            return cls.get(getattr(cls, identifier) == id)
+        except cls.DoesNotExist:
+            # Is it an old identifier?
+            from .versioning import IdentifierRedirect
+            new = IdentifierRedirect.follow(cls, identifier, id)
+            if new:
+                return cls.get(getattr(cls, identifier) == new)
+            else:
+                raise

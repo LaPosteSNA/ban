@@ -1,8 +1,11 @@
-# -*- coding: utf-8 -*-
 import argparse
 import inspect
+import os
 import sys
 from itertools import zip_longest
+
+from ban.core import config
+
 
 NO_DEFAULT = object()
 
@@ -19,24 +22,70 @@ def report(name, item):
 class Command:
 
     current = None
+    _globals = {
+        'db_port': None,
+        'db_host': None,
+        'db_user': None,
+        'db_password': None,
+        'db_name': None,
+        'session_user': None,
+        'workers': os.cpu_count(),
+        'verbose': False,
+        'filter': False,
+    }
 
     def __init__(self, command):
         self.command = command
         self.inspect()
         self.init_parser()
+        self.set_globals()
         self._reports = {}
+        self._on_parse_args = []
+        self._on_before_call = []
+        self._on_after_call = []
 
     def __call__(self, *args, **kwargs):
         Command.current = self
-        self.command(*args, **kwargs)
-        self.reporting()
-        Command.current = None
+        for func in self._on_before_call:
+            func(self, args, kwargs)
+        try:
+            self.command(*args, **kwargs)
+        except KeyboardInterrupt:
+            pass
+        else:
+            for func in self._on_after_call:
+                func(self, args, kwargs)
+        finally:
+            self.reporting()
+            Command.current = None
 
-    def invoke(self, args):
-        kwargs = {}
+    def invoke(self, parsed):
+        kwargs = {'cmd': self}
         for name, _ in self.spec:
-            kwargs[name] = getattr(args, name)
+            kwargs[name] = getattr(parsed, name)
+        for func in self._on_parse_args:
+            func(self, parsed, kwargs)
+        self.parse_globals(parsed, **kwargs)
         self(**kwargs)
+
+    def on_parse_args(self, func):
+        self._on_parse_args.append(func)
+
+    def on_before_call(self, func):
+        self._on_before_call.append(func)
+
+    def on_after_call(self, func):
+        self._on_after_call.append(func)
+
+    def set_globals(self):
+        for name, default in self._globals.items():
+            self.add_argument(name, default)
+
+    def parse_globals(self, parsed, **kwargs):
+        for name in self._globals.keys():
+            value = getattr(parsed, name, None)
+            if value:
+                config.set(name, value)
 
     @property
     def namespace(self):
@@ -66,7 +115,7 @@ class Command:
 
     def parse_parameter_help(self, name):
         try:
-            return self.help.split(name)[1].split('\n')[0].strip()
+            return self.help.split(name, 1)[1].split('\n')[0].strip()
         except IndexError:
             return ''
 
@@ -88,6 +137,8 @@ class Command:
                     kwargs['action'] = action
                 elif type_ in (int, str):
                     kwargs['type'] = type_
+                elif type_ in (list, tuple):
+                    kwargs['nargs'] = '*'
                 elif callable(default):
                     kwargs['type'] = type_
                     kwargs['default'] = ''
@@ -104,9 +155,13 @@ class Command:
 
     def reporting(self):
         if self._reports:
-            sys.stdout.write('\n# Stats:')
+            sys.stdout.write('\n# Reports:')
             for name, items in self._reports.items():
-                sys.stdout.write('\n{}: {}'.format(name, len(items)))
+                sys.stdout.write('\n- {}: {}'.format(name, len(items)))
+                if config.get('VERBOSE'):
+                    for item in items:
+                        sys.stdout.write('\n  . {}'.format(item))
+        sys.stdout.write('\n')
 
 
 def command(func):

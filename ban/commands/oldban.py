@@ -11,7 +11,7 @@ __namespace__ = 'import'
 
 @command
 @nodiff
-def oldban(path):
+def oldban(path, **kwargs):
     """Import from BAN json stream files from
     http://bano.openstreetmap.fr/BAN_odbl/"""
     max_value = sum(1 for line in iter_file(path))
@@ -30,7 +30,8 @@ def process_row(metadata):
     klass = Street if kind == 'street' else Locality
     instance = klass.select().where(klass.fantoir == fantoir).first()
     if instance:
-        return report('Existing', metadata)
+        return report('Existing {}'.format(klass.__name__), {name: name,
+                                                             fantoir: fantoir})
 
     try:
         municipality = Municipality.get(Municipality.insee == insee)
@@ -70,5 +71,6 @@ def add_housenumber(parent, id, metadata):
                                        housenumber=housenumber.id)
         if not validator.errors:
             validator.save()
+        report('housenumber', housenumber)
     else:
-        report('Error', validator.errors)
+        report('HouseNumber error', validator.errors)
