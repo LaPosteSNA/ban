@@ -4,14 +4,14 @@ from progressbar import ProgressBar
 
 from ban.commands import command, report
 from ban.core.models import (HouseNumber, Locality, Municipality, Position,
-                             Street)
+                             Street, ZipCode)
 from .helpers import iter_file, session
 
 __namespace__ = 'import'
 
 
 @command
-def ignsna(path):
+def ignsna(path, **kwargs):
     """Import from IGN/Laposte BDUNI"""
 
     municipality_zipcode_file = glob.glob(os.path.join(path, 'hsp7*.ai'))
@@ -21,16 +21,15 @@ def ignsna(path):
     print(municipality_zipcode_file)
     print(street_file)
     print(number_file)
-    import ipdb; ipdb.set_trace()
+    #import ipdb; ipdb.set_trace()
     if municipality_zipcode_file is not None:
         process_municipality_file(municipality_zipcode_file[0])
 
-
-    if street_file is not None:
-        process_streetFile(street_file[0])
-
-    if number_file is not None:
-        process_numberFile(number_file[0])
+    # if street_file is not None:
+    #     process_streetFile(street_file[0])
+    #
+    # if number_file is not None:
+    #     process_numberFile(number_file[0])
 
 
     #max_value = sum(1 for line in iter_file(path))
@@ -50,16 +49,34 @@ def process_municipality_file(municipality_zip_code_file):
             zip_code = line[89:94]
             old_insee = line[126:131]
 
+            zipcode_data = dict(version='1', code=zip_code)
+            validator = ZipCode.validator(**zipcode_data)
+            if not validator.errors:
+                try:
+                    validator = validator.save(validator)
+                except validator.ValidationError:
+                    pass
+                finally:
+                    zip_code_bean = ZipCode.get(ZipCode.code == zip_code)
+            else:
+                return report('Error on zipcode', validator.errors)
+
             try:
                 municipality = Municipality.get(Municipality.insee == insee)
-
+                code = municipality.zipcodes
+                if not (zip_code_bean) in code:
+                    if zip_code_bean:
+                        municipality.zipcodes.add(zip_code_bean)
             except Municipality.DoesNotExist:
-                data = dict(insee=insee, name=name, siren='99999', version='1', zipcode= zip_code)
-                validator = Municipality.validator(**data)
-                if not validator.errors:
-                    validator.save(validator)
-                else:
-                    return report('Error', validator.errors)
+                pass
+
+            #     data = dict(insee=insee, name=name, siren='99999', version='1')
+            #
+            #     validator = Municipality.validator(**data)
+            #     if not validator.errors:
+            #         validator.save(validator)
+            #     else:
+            #         return report('Error', validator.errors)
 
 
 @session
