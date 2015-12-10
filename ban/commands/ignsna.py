@@ -23,7 +23,7 @@ def ignsna(path, **kwargs):
     print(number_file)
     #import ipdb; ipdb.set_trace()
     if municipality_zipcode_file is not None:
-        process_municipality_file(municipality_zipcode_file[0])
+        process_municipality_file(municipality_zipcode_file.as_resource())
 
     # if street_file is not None:
     #     process_streetFile(street_file[0])
@@ -49,24 +49,22 @@ def process_municipality_file(municipality_zip_code_file):
             zip_code = line[89:94]
             old_insee = line[126:131]
 
-            zipcode_data = dict(version='1', code=zip_code)
-            validator = ZipCode.validator(**zipcode_data)
-            if not validator.errors:
-                try:
-                    validator = validator.save(validator)
-                except validator.ValidationError:
-                    pass
-                finally:
-                    zip_code_bean = ZipCode.get(ZipCode.code == zip_code)
-            else:
-                return report('Error on zipcode', validator.errors)
+        # try:
+            zip_code_bean = ZipCode.create_or_get(code=zip_code, version='1')
+        # except zip_code_bean.:
+        #     zipcode_data = dict(version='1', code=zip_code)
+        #     validator = ZipCode.validator(**zipcode_data)
+        #     if not validator.errors:
+        #         validator = validator.save(validator)
+        #     else:
+        #         return report('Error on zipcode', validator.errors)
 
             try:
                 municipality = Municipality.get(Municipality.insee == insee)
                 code = municipality.zipcodes
                 if not (zip_code_bean) in code:
                     if zip_code_bean:
-                        municipality.zipcodes.add(zip_code_bean)
+                        municipality.zipcodes.add(zip_code_bean[0])
             except Municipality.DoesNotExist:
                 pass
 
