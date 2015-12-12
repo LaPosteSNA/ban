@@ -16,26 +16,49 @@ def exp_resources(path, **kwargs):
                  models.Street, models.HouseNumber]
     goe_resources = [models.Locality, models.Street, models.HouseNumber]
     with Path(path).open(mode='w', encoding='utf-8') as f:
+        action = 'update'
 
         for resource in (models.Street.select()):
-            street_name = resource.name
-            importance = 1/4
-            if not street_name.find('Boulevard') == -1 or not street_name.find('Place') == -1 or not street_name.find('Espl') == -1:
-                importance = 4/4
-            elif not street_name.find('Av') == -1:
-                importance = 3/4
-            elif not street_name.find('Rue') == -1:
-                importance = 2/4
+            response = make_hns(action, resource)
 
-            response = ('"id": "{}_{}", "type": "{}", "name": "{}", "insee": "{}", "insee": "{}", "lon": 0, "lat": 0, "city": "{}", "importance": "{:.4f}" '.format(resource.municipality.insee, resource.fantoir, resource.resource, resource.name, resource.municipality.insee, resource.municipality.insee, resource.municipality.name, importance)) # +'"cea":"{} ", '.format(resource.get('cea'))
-            hns = '"housenumbers": {'
-            for hn in models.HouseNumber.select().where(models.HouseNumber.street == resource).as_resource():
-
-                f.write(dumps(hn) + '\n')
+            f.write(dumps(response) + '\n')
                 # Memory consumption when exporting all France housenumbers?
             # report(resouce.__name__, resouce)
-                report(hn.get('cia'), hn)
+            report(resource.name, resource)
 
+
+def make_hns(action, resource):
+    importance = get_importance(resource.name)
+    hns = ""
+    for hn in models.HouseNumber.select().join(models.Position).where(
+                            models.HouseNumber == models.Position.housenumber and models.HouseNumber.street == resource):
+        part = '{} {}: ["lat":"{}", "lon":{}, "id": "{}", "cea": "{}"], '.format(hn.number, hn.ordinal,
+                                                                                 hn.center['coordinates'][0],
+                                                                                 hn.center['coordinates'][1], hn.cia,
+                                                                                 hn.cea)
+        hns = hns + part
+    hns = '"housenumbers": {' + hns[:-2] + '}'
+    response = (
+    '["id": "{}_{}", "type": "{}", "name": "{}", "insee": "{}", "lon": 0, "lat": 0, "city": "{}", "importance": "{:.4f}", {}]'.format(
+        resource.municipality.insee, resource.fantoir, resource.resource, resource.name, resource.municipality.insee,
+        resource.municipality.name, importance, hns))
+    if action is 'update':
+        response = '["_action": "update", ' + response[1:]
+    response = response.replace(']', '}')
+    response = response.replace('[', '{')
+    return response
+
+
+def get_importance(street_name):
+    importance = 1 / 4
+    if not street_name.find('Boulevard') == -1 or not street_name.find('Place') == -1 or not street_name.find(
+            'Espl') == -1:
+        importance = 4 / 4
+    elif not street_name.find('Av') == -1:
+        importance = 3 / 4
+    elif not street_name.find('Rue') == -1:
+        importance = 2 / 4
+    return importance
 
 
 @command
