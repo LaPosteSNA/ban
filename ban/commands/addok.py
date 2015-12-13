@@ -1,4 +1,6 @@
 from pathlib import Path
+import platform
+from peewee import fn
 
 from ban.commands import command, report
 
@@ -15,7 +17,10 @@ def exp_resources(path, **kwargs):
     resources = [models.ZipCode, models.Municipality, models.Locality,
                  models.Street, models.HouseNumber]
     goe_resources = [models.Locality, models.Street, models.HouseNumber]
-    with Path(path).open(mode='w', encoding='utf-8') as f:
+    _encoding = 'utf-8'
+    if platform.system() == 'Windows':
+        _encoding = 'Latin-1'
+    with Path(path).open(mode='w', encoding=_encoding) as f:
         action = 'update'
 
         for resource in (models.Street.select()):
@@ -30,18 +35,28 @@ def exp_resources(path, **kwargs):
 def make_hns(action, resource):
     importance = get_importance(resource.name)
     hns = ""
+    orig_center = {'lon': 0, 'lat': 0, 'zipcode': None}
+    municipality = models.Municipality.get(models.Municipality.name == resource.municipality.name)
+    if municipality.zipcodes:
+        orig_center['zipcode'] = municipality.zipcodes[0]
     for hn in models.HouseNumber.select().join(models.Position).where(
-                            models.HouseNumber == models.Position.housenumber and models.HouseNumber.street == resource):
-        part = '{} {}: ["lat":"{}", "lon":{}, "id": "{}", "cea": "{}"], '.format(hn.number, hn.ordinal,
+                            models.HouseNumber == models.Position.housenumber and (models.HouseNumber.street == resource or models.HouseNumber.locality == resource)):
+        if hn.number == 0:
+            orig_center['lon'] = hn.center['coordinates'][0]
+            orig_center['lat'] = hn.center['coordinates'][1]
+
+        else:
+            part = '{} {}: ["lat":"{}", "lon":"{}", "id": "{}", "cea": "{}", "zipcode": "{}"], '.format(hn.number, hn.ordinal,
                                                                                  hn.center['coordinates'][0],
                                                                                  hn.center['coordinates'][1], hn.cia,
-                                                                                 hn.cea)
-        hns = hns + part
+                                                                                 hn.cea, hn.zipcode)
+            hns = hns + part
+
     hns = '"housenumbers": {' + hns[:-2] + '}'
     response = (
-    '["id": "{}_{}", "type": "{}", "name": "{}", "insee": "{}", "lon": 0, "lat": 0, "city": "{}", "importance": "{:.4f}", {}]'.format(
-        resource.municipality.insee, resource.fantoir, resource.resource, resource.name, resource.municipality.insee,
-        resource.municipality.name, importance, hns))
+    '["id": "{}_{}", "type": "{}", "name": "{}", "insee": "{}", "zipcode": {}, "lon": "{}", "lat": "{}", "city": "{}","context": "{},{}", "importance": "{:.4f}", {}]'.format(
+        resource.municipality.insee, resource.fantoir, resource.resource, resource.name, resource.municipality.insee, orig_center['zipcode'], orig_center['lon'], orig_center['lat'],
+        resource.municipality.name, resource.name, resource.municipality.name, importance, hns))
     if action is 'update':
         response = '["_action": "update", ' + response[1:]
     response = response.replace(']', '}')
@@ -68,19 +83,19 @@ def exp_diff(path, **kwargs):
     path    path of file where to write resources
     """
     with Path(path).open(mode='w', encoding='utf-8') as f:
-        resource = versioning.Diff
-        for data in resource.select().where(resource.id == '1').as_resource():
+        version = versioning.Diff
+        for data in version.select().where(version.id == '1').as_resource():
             resource_id = data['resource_id']
             diff = data['diff']
             resource_type = data['resource']
             increment = data['increment']
             new = data['new']
             attrib = getattr(models, resource_type[0:1].upper()+resource_type[1:])
-            for allA in attrib.select().where(attrib.id == new['id']).as_resource():
+            for allA in attrib.select().where(fn.Max(attrib.id)).as_resource():
                 allA
 
 
 
             f.write(dumps(data) + '\n')
             # Memory consumption when exporting all France housenumbers?
-            report(resource.__name__, data)
+            report(version.__name__, data)
