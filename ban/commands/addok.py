@@ -82,7 +82,10 @@ def exp_diff(path, **kwargs):
 
     path    path of file where to write resources
     """
-    with Path(path).open(mode='w', encoding='utf-8') as f:
+    _encoding = 'utf-8'
+    if platform.system() == 'Windows':
+        _encoding = 'Latin-1'
+    with Path(path).open(mode='w', encoding=_encoding) as f:
         version = versioning.Diff
         for data in version.select().where(version.id == '1').as_resource():
             resource_id = data['resource_id']
@@ -90,9 +93,20 @@ def exp_diff(path, **kwargs):
             resource_type = data['resource']
             increment = data['increment']
             new = data['new']
+
+            action = 'update'
+            if new == 'None':
+                action = 'delete'
+
             attrib = getattr(models, resource_type[0:1].upper()+resource_type[1:])
-            for allA in attrib.select().where(fn.Max(attrib.id)).as_resource():
-                allA
+            allA = attrib.select().where(attrib.id == resource_id)
+
+            response = make_hns(action, allA)
+
+            f.write(dumps(response) + '\n')
+                    # Memory consumption when exporting all France housenumbers?
+                # report(resouce.__name__, resouce)
+            report(allA.name, allA)
 
 
 
