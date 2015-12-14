@@ -50,7 +50,7 @@ def process_municipality_file(line):
                 if zip_code_bean[0]:
                     try:
                         municipality.zipcodes.add(zip_code_bean[0])
-                    except municipality.IntegrityError:
+                    except municipality.zipcodes.IntegrityError:
                         pass
         except Municipality.DoesNotExist:
             pass
