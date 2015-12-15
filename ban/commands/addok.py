@@ -8,6 +8,18 @@ from ban.core import models, versioning
 from ban.core.encoder import dumps
 
 
+def make_municipality(action, municipality):
+    importance = 1
+    orig_center = {'lon': 0, 'lat': 0, 'zipcode': None}
+    if municipality.zipcodes:
+        orig_center['zipcode'] = municipality.zipcodes[0]
+    response = (
+    '["id": "{}", "type": "{}", "name": "{}", "zipcode": "{}", "lon": "{}", "lat": "{}", "city": "{}", "importance": "{:.4f}"]'.format(
+        municipality.insee, municipality.resource, municipality.name, orig_center['zipcode'], orig_center['lon'], orig_center['lat'],
+        municipality.name, importance))
+    return cleanning_response(response)
+
+
 @command
 def exp_resources(path, **kwargs):
     """Export database as resources to addok.
@@ -21,12 +33,16 @@ def exp_resources(path, **kwargs):
     if platform.system() == 'Windows':
         _encoding = 'Latin-1'
     with Path(path).open(mode='w', encoding=_encoding) as f:
-        action = 'update'
+        action = ''
 
-        for resource in (models.Street.select()):
+        for resource in (models.Municipality.select()):
+            response = make_municipality(action, resource)
+            f.write(response + '\n')
+
+        for resource in (models.Street.select() and models.Locality.select()):
             response = make_hns(action, resource)
 
-            f.write(dumps(response) + '\n')
+            f.write(response + '\n')
                 # Memory consumption when exporting all France housenumbers?
             # report(resouce.__name__, resouce)
             report(resource.name, resource)
@@ -46,7 +62,7 @@ def make_hns(action, resource):
             orig_center['lat'] = hn.center['coordinates'][1]
 
         else:
-            part = '{} {}: ["lat":"{}", "lon":"{}", "id": "{}", "cea": "{}", "zipcode": "{}"], '.format(hn.number, hn.ordinal,
+            part = '"{}": ["lat":"{}", "lon":"{}", "id": "{}", "cea": "{}", "zipcode": "{}"], '.format((hn.number+' '+hn.ordinal).strip(),
                                                                                  hn.center['coordinates'][0],
                                                                                  hn.center['coordinates'][1], hn.cia,
                                                                                  hn.cea, hn.zipcode)
@@ -54,11 +70,15 @@ def make_hns(action, resource):
 
     hns = '"housenumbers": {' + hns[:-2] + '}'
     response = (
-    '["id": "{}_{}", "type": "{}", "name": "{}", "insee": "{}", "zipcode": {}, "lon": "{}", "lat": "{}", "city": "{}","context": "{},{}", "importance": "{:.4f}", {}]'.format(
+    '["id": "{}_{}", "type": "{}", "name": "{}", "insee": "{}", "zipcode": "{}", "lon": "{}", "lat": "{}", "city": "{}","context": "{},{}", "importance": "{:.4f}", {}]'.format(
         resource.municipality.insee, resource.fantoir, resource.resource, resource.name, resource.municipality.insee, orig_center['zipcode'], orig_center['lon'], orig_center['lat'],
         resource.municipality.name, resource.name, resource.municipality.name, importance, hns))
     if action is 'update':
         response = '["_action": "update", ' + response[1:]
+    return cleanning_response(response)
+
+
+def cleanning_response(response):
     response = response.replace(']', '}')
     response = response.replace('[', '{')
     return response
@@ -103,7 +123,7 @@ def exp_diff(path, **kwargs):
 
             response = make_hns(action, allA)
 
-            f.write(dumps(response) + '\n')
+            f.write(response + '\n')
                     # Memory consumption when exporting all France housenumbers?
                 # report(resouce.__name__, resouce)
             report(allA.name, allA)
