@@ -1,11 +1,9 @@
 from pathlib import Path
+import os
 import platform
-from peewee import fn
 
 from ban.commands import command, report
-
 from ban.core import models, versioning
-from ban.core.encoder import dumps
 
 
 def make_municipality(action, municipality):
@@ -14,9 +12,12 @@ def make_municipality(action, municipality):
     if municipality.zipcodes:
         orig_center['zipcode'] = municipality.zipcodes[0]
     response = (
-    '["id": "{}", "type": "{}", "name": "{}", "zipcode": "{}", "lon": "{}", "lat": "{}", "city": "{}", "importance": "{:.4f}"]'.format(
-        municipality.insee, municipality.resource, municipality.name, orig_center['zipcode'], orig_center['lon'], orig_center['lat'],
-        municipality.name, importance))
+        '["id": "{}", "type": "{}", "name": "{}", "zipcode": "{}", "lon": "{}", "lat": "{}", "city": "{}", "importance": "{:.4f}"]'.format(
+                municipality.insee, municipality.resource, municipality.name, orig_center['zipcode'],
+                orig_center['lon'], orig_center['lat'],
+                municipality.name, importance))
+    if action is 'update':
+        response = '["_action": "update", ' + response[1:]
     return cleanning_response(response)
 
 
@@ -29,53 +30,68 @@ def exp_resources(path, **kwargs):
     resources = [models.ZipCode, models.Municipality, models.Locality,
                  models.Street, models.HouseNumber]
     goe_resources = [models.Locality, models.Street, models.HouseNumber]
-    _encoding = 'utf-8'
-    if platform.system() == 'Windows':
-        _encoding = 'Latin-1'
-    with Path(path).open(mode='w', encoding=_encoding) as f:
+    with Path(path).open(mode='w', encoding='utf-8') as f:
         action = ''
 
         for resource in (models.Municipality.select()):
-            response = make_municipality(action, resource)
-            f.write(response + '\n')
+            write_responce(action, make_municipality(action, resource), f)
 
-        for resource in (models.Street.select() and models.Locality.select()):
-            response = make_hns(action, resource)
+        for resource in (models.Street.select()):
+            write_responce(action, make_hns(action, resource), f)
 
-            f.write(response + '\n')
-                # Memory consumption when exporting all France housenumbers?
-            # report(resouce.__name__, resouce)
-            report(resource.name, resource)
+        for resource in (models.Locality.select()):
+            write_responce(action, make_hns(action, resource), f)
 
 
 def make_hns(action, resource):
-    importance = get_importance(resource.name)
+    importance = 1
     hns = ""
     orig_center = {'lon': 0, 'lat': 0, 'zipcode': None}
-    municipality = models.Municipality.get(models.Municipality.name == resource.municipality.name)
-    if municipality.zipcodes:
-        orig_center['zipcode'] = municipality.zipcodes[0]
-    for hn in models.HouseNumber.select().join(models.Position).where(
-                            models.HouseNumber == models.Position.housenumber and (models.HouseNumber.street == resource or models.HouseNumber.locality == resource)):
-        if hn.number == 0:
-            orig_center['lon'] = hn.center['coordinates'][0]
-            orig_center['lat'] = hn.center['coordinates'][1]
+    if resource.resource == 'housenumber':
+        query = models.HouseNumber.select().join(models.Position).where(
+                                models.HouseNumber == models.Position.housenumber and (
+                                models.HouseNumber.street == resource.street or models.HouseNumber.locality == resource.locality) and models.HouseNumber.id == resource )
+        for hn in query:
+            if hn.street.name:
+                importance = get_importance(hn.street.name)
+                resource = models.Street.get(models.Street.id == hn.street)
+            elif hn.locality.name:
+                importance = get_importance(hn.locality.name)
+                resource = models.Locality.get(models.Locality.id == hn.locality)
 
-        else:
-            part = '"{}": ["lat":"{}", "lon":"{}", "id": "{}", "cea": "{}", "zipcode": "{}"], '.format((hn.number+' '+hn.ordinal).strip(),
-                                                                                 hn.center['coordinates'][0],
-                                                                                 hn.center['coordinates'][1], hn.cia,
-                                                                                 hn.cea, hn.zipcode)
-            hns = hns + part
+            hns = make_a_housenumber(hn, hns, orig_center)
 
-    hns = '"housenumbers": {' + hns[:-2] + '}'
+    else:
+        importance = get_importance(resource.name)
+        for hn in models.HouseNumber.select().join(models.Position).where(
+                                models.HouseNumber == models.Position.housenumber and (
+                                models.HouseNumber.street == resource or models.HouseNumber.locality == resource)):
+            hns = make_a_housenumber(hn, hns, orig_center)
+
+    hns = '"housenumbers":{' + hns[:-2] + '}'
     response = (
-    '["id": "{}_{}", "type": "{}", "name": "{}", "insee": "{}", "zipcode": "{}", "lon": "{}", "lat": "{}", "city": "{}","context": "{},{}", "importance": "{:.4f}", {}]'.format(
-        resource.municipality.insee, resource.fantoir, resource.resource, resource.name, resource.municipality.insee, orig_center['zipcode'], orig_center['lon'], orig_center['lat'],
-        resource.municipality.name, resource.name, resource.municipality.name, importance, hns))
+        '["id": "{}_{}", "type": "{}", "name": "{}", "insee": "{}", "zipcode": "{}", "lon": "{}", "lat": "{}", "city": "{}","context": "{},{}", "importance": {:.4f} , {}]'.format(
+                resource.municipality.insee, resource.fantoir, resource.resource, resource.name,
+                resource.municipality.insee, orig_center['zipcode'], orig_center['lon'], orig_center['lat'],
+                resource.municipality.name, resource.name, resource.municipality.name, importance, hns))
     if action is 'update':
         response = '["_action": "update", ' + response[1:]
     return cleanning_response(response)
+
+
+def make_a_housenumber(hn, hns, orig_center):
+    if hn.number == 0:
+        orig_center['lon'] = hn.center['coordinates'][0]
+        orig_center['lat'] = hn.center['coordinates'][1]
+
+    else:
+        part = '"{}": ["lat": {}, "lon": {}, "id": "{}", "cea": "{}", "zipcode": "{}"], '.format(
+                (hn.number + ' ' + hn.ordinal).strip(),
+                hn.center['coordinates'][0],
+                hn.center['coordinates'][1], hn.cia,
+                12345678, hn.zipcode)  # hn.cea#, hn.zipcode)
+        hns = hns + part
+    return hns
 
 
 def cleanning_response(response):
@@ -100,36 +116,51 @@ def get_importance(street_name):
 def exp_diff(path, **kwargs):
     """Export diff to addok.
 
-    path    path of file where to write resources
+    path    file path to write resources
     """
     _encoding = 'utf-8'
     if platform.system() == 'Windows':
         _encoding = 'Latin-1'
-    with Path(path).open(mode='w', encoding=_encoding) as f:
-        version = versioning.Diff
-        for data in version.select().where(version.id == '1').as_resource():
-            resource_id = data['resource_id']
-            diff = data['diff']
-            resource_type = data['resource']
-            increment = data['increment']
-            new = data['new']
+    version = versioning.Diff
+    for data in version.select().as_resource():
+        resource_id = data['resource_id']
+        diff = data['diff']
+        resource_type = data['resource']
+        increment = data['increment']
+        new = data['new']
+
+        with Path(os.path.join(path, 'diff_' + str(increment) + '.json')).open(mode='w', encoding=_encoding) as f:
 
             action = 'update'
             if new == 'None':
                 action = 'delete'
 
-            attrib = getattr(models, resource_type[0:1].upper()+resource_type[1:])
-            allA = attrib.select().where(attrib.id == resource_id)
+            if resource_type == 'housenumber':
+                attrib = getattr(models, 'HouseNumber')
+            else:
+                attrib = getattr(models, resource_type[0:1].upper() + resource_type[1:])
 
-            response = make_hns(action, allA)
+            if attrib is models.Municipality:
+                municipality = attrib.get(models.Municipality.id == resource_id)
+                response = make_municipality(action, municipality)
+                f.write(response + '\n')
 
-            f.write(response + '\n')
-                    # Memory consumption when exporting all France housenumbers?
-                # report(resouce.__name__, resouce)
-            report(allA.name, allA)
+                for resource in (models.Street.select().where(models.Street.municipality == municipality)):
+                    write_responce(action, make_hns(action, resource), f)
 
+                for resource in (models.Locality.select().where(models.Locality.municipality == municipality)):
+                    write_responce(action, make_hns(action, resource), f)
 
+            if attrib is models.Locality or attrib is models.Street:
+                write_responce(action, make_hns(action, attrib.get()), f)
 
-            f.write(dumps(data) + '\n')
-            # Memory consumption when exporting all France housenumbers?
+            if attrib is models.HouseNumber:
+                hn = attrib.get(models.HouseNumber.id == resource_id)
+                write_responce(action, make_hns(action, hn), f)
             report(version.__name__, data)
+
+
+def write_responce(action, response, in_file):
+    in_file.write(response + '\n')
+    # Memory consumption when exporting all France housenumbers?
+    # report(resouce.__name__, resouce)
