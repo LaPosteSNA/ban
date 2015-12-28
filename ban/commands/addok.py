@@ -8,12 +8,12 @@ from ban.core import models, versioning
 
 def make_municipality(action, municipality):
     importance = 1
-    orig_center = {'lon': 0, 'lat': 0, 'zipcode': None}
-    if municipality.zipcodes:
-        orig_center['zipcode'] = municipality.zipcodes[0]
+    orig_center = {'lon': 0, 'lat': 0, 'postcode': None}
+    if municipality.postcodes:
+        orig_center['postcode'] = municipality.postcodes[0]
     response = (
-        '["id": "{}", "type": "{}", "name": "{}", "zipcode": "{}", "lon": "{}", "lat": "{}", "city": "{}", "importance": "{:.4f}"]'.format(
-                municipality.insee, municipality.resource, municipality.name, orig_center['zipcode'],
+        '["id": "{}", "type": "{}", "name": "{}", "postcode": "{}", "lon": "{}", "lat": "{}", "city": "{}", "importance": "{:.4f}"]'.format(
+                municipality.insee, municipality.resource, municipality.name, orig_center['postcode'],
                 orig_center['lon'], orig_center['lat'],
                 municipality.name, importance))
     if action is 'update':
@@ -27,7 +27,7 @@ def exp_resources(path, **kwargs):
 
     path    path of file where to write resources
     """
-    resources = [models.ZipCode, models.Municipality, models.Locality,
+    resources = [models.PostCode, models.Municipality, models.Locality,
                  models.Street, models.HouseNumber]
     goe_resources = [models.Locality, models.Street, models.HouseNumber]
     with Path(path).open(mode='w', encoding='utf-8') as f:
@@ -46,7 +46,7 @@ def exp_resources(path, **kwargs):
 def make_hns(action, resource):
     importance = 1
     hns = ""
-    orig_center = {'lon': 0, 'lat': 0, 'zipcode': None}
+    orig_center = {'lon': 0, 'lat': 0, 'postcode': None}
     if resource.resource == 'housenumber':
         query = models.HouseNumber.select().join(models.Position).where(
                                 models.HouseNumber == models.Position.housenumber and (
@@ -70,9 +70,9 @@ def make_hns(action, resource):
 
     hns = '"housenumbers":{' + hns[:-2] + '}'
     response = (
-        '["id": "{}_{}", "type": "{}", "name": "{}", "insee": "{}", "zipcode": "{}", "lon": "{}", "lat": "{}", "city": "{}","context": "{},{}", "importance": {:.4f} , {}]'.format(
+        '["id": "{}_{}", "type": "{}", "name": "{}", "insee": "{}", "postcode": "{}", "lon": "{}", "lat": "{}", "city": "{}","context": "{},{}", "importance": {:.4f} , {}]'.format(
                 resource.municipality.insee, resource.fantoir, resource.resource, resource.name,
-                resource.municipality.insee, orig_center['zipcode'], orig_center['lon'], orig_center['lat'],
+                resource.municipality.insee, orig_center['postcode'], orig_center['lon'], orig_center['lat'],
                 resource.municipality.name, resource.name, resource.municipality.name, importance, hns))
     if action is 'update':
         response = '["_action": "update", ' + response[1:]
@@ -85,11 +85,11 @@ def make_a_housenumber(hn, hns, orig_center):
         orig_center['lat'] = hn.center['coordinates'][1]
 
     else:
-        part = '"{}": ["lat": {}, "lon": {}, "id": "{}", "cea": "{}", "zipcode": "{}"], '.format(
+        part = '"{}": ["lat": {}, "lon": {}, "id": "{}", "cea": "{}", "postcode": "{}"], '.format(
                 (hn.number + ' ' + hn.ordinal).strip(),
                 hn.center['coordinates'][0],
                 hn.center['coordinates'][1], hn.cia,
-                12345678, hn.zipcode)  # hn.cea#, hn.zipcode)
+                12345678, hn.postcode)  # hn.cea#, hn.postcode)
         hns = hns + part
     return hns
 

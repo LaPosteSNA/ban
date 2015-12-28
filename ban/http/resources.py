@@ -2,6 +2,7 @@ from urllib.parse import urlencode
 
 import falcon
 
+from ban.commands.addok import exp_diff
 from ban.core import models
 from ban.auth import models as amodels
 
@@ -119,6 +120,7 @@ class BaseCRUD(BaseCollection, metaclass=WithURL):
         if not validator.errors:
             try:
                 instance = validator.save()
+                exp_diff('C:\\Users\\mhx157\\dif')
             except instance.ForcedVersionError:
                 status = falcon.HTTP_CONFLICT
                 # Return original object.
