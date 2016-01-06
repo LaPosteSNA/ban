@@ -21,14 +21,12 @@ class BaseModel(BaseResource, BaseVersioned):
 
 class Model(ResourceModel, Versioned, metaclass=BaseModel):
 
+    resource_fields = ['version']
+
     class Meta:
         validate_backrefs = False
         # 'version' is validated by us.
         resource_schema = {'version': {'required': False}}
-
-    @classmethod
-    def get_resource_fields(cls):
-        return cls.resource_fields + ['id', 'version']
 
 
 class NamedModel(Model):
@@ -132,7 +130,8 @@ class HouseNumber(Model):
 
     def clean(self):
         if not self.street and not self.locality:
-            raise ValueError('A housenumber number needs to be linked to either a street or a locality.')  # noqa
+            raise ValueError('A housenumber number needs to be linked to '
+                             'either a street or a locality.')
         qs = HouseNumber.select().where(HouseNumber.number == self.number,
                                         HouseNumber.ordinal == self.ordinal,
                                         HouseNumber.street == self.street,
@@ -140,7 +139,8 @@ class HouseNumber(Model):
         if self.id:
             qs = qs.where(HouseNumber.id != self.id)
         if qs.exists():
-            raise ValueError('Row with same number, ordinal, street and locality already exists')  # noqa
+            raise ValueError('Row with same number, ordinal, street and '
+                             'locality already exists')
         self._clean_called = True
 
     def compute_cia(self):
