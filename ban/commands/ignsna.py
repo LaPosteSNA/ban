@@ -1,108 +1,42 @@
-import glob
 import os
+
 from ban.commands import command, report
-from ban.core.models import (HouseNumber, Locality, Municipality, Position,
-                             Street, PostCode)
-from .helpers import iter_file, session, batch
+from ban.core.models import (Municipality, PostCode)
+from .helpers import session, batch, nodiff, count
 
 __namespace__ = 'import'
 
 
 @command
+@nodiff
 def ignsna(path, **kwargs):
     """Import from IGN/Laposte BDUNI
-    :param path: directory location of the files hsp7xxxx.ai, hsv7xxxx.ai and hsw4xxxx.ai"""
 
-    municipality_zipcode_file = glob.glob(os.path.join(path, 'hsp7*.ai'))
-    # street_file = glob.glob(os.path.join(path, 'hsv7*.ai'))
-    # number_file = glob.glob(os.path.join(path, 'hsw4*.ai'))
+    :param path directory location of "hexa" files (hsp7aaaa.ai, hsv7aaaa.ai and hsw4aaaa.ai)"""
 
-    if municipality_zipcode_file is not None:
-        max_value = get_max_line(municipality_zipcode_file[0])
-        lines = list(get_lines(municipality_zipcode_file[0]))
-        # ToDo: test the performance of single threaded and multi-threaded processes
-        batch(process_municipality_file, lines, max_value=max_value)
-
-        # ToDo: uncomment and complete when process needed
-        # if street_file is not None:
-        #     process_streetFile(street_file[0])
-        #
-        # if number_file is not None:
-        #     process_numberFile(number_file[0])
+    zipcode_file = os.path.join(path, 'hsp7aaaa.ai')
+    with open(zipcode_file) as f:
+        m_dir = count(f)
+        f.seek(0)
+        batch(process_postcode_file, f, max_value=m_dir)
 
 
 @session
-def process_municipality_file(line):
-    # line = lines[x]
-    if line[50] == 'M':
-        insee = line[6:11]
-        # name = line[11:49]
-        # name = name.strip()
-        zip_code = line[89:94]
-        # old_insee = line[126:131]
-        # old_insee = old_insee.strip()
-
-        zip_code_bean = PostCode.create_or_get(code=zip_code, version='1')
-        try:
-            municipality = Municipality.get(Municipality.insee == insee)
-            code = municipality.zipcodes
-            if not (zip_code_bean[0]) in code:
-                if zip_code_bean[0]:
-                    try:
-                        municipality.zipcodes.add(zip_code_bean[0])
-                    except municipality.zipcodes.IntegrityError:
-                        pass
-        except Municipality.DoesNotExist:
-            pass
-
-
-# ToDo: uncomment and complete when process needed
-# @session
-# def process_streetFile(street_file):
-#     max_value = get_max_line(street_file)
-#     lines = get_lines(street_file)
-#     pbar = ProgressBar()
-#     for x in pbar(range(0, max_value)):
-#         line = lines[x]
-#         if line[0] == 'V':
-#             insee = line[7:12]
-#             name = line[60:92]
-#             name = name.strip()
-#             zip_code = line[109:114]
-#             try:
-#                 municipality = Municipality.get(Municipality.insee == insee)
-#
-#             except Municipality.DoesNotExist:
-#                 return report('Error', 'Municipality does not exist: {}'.format(insee))
-#
-#             try:
-#                 street = Street.get(Street.name == name and Street.municipality == municipality.id)
-#             except Street.DoesNotExist:
-#                 data = dict(
-#                     name=name,
-#                     municipality=municipality.id,
-#                     version=1,
-#                     # tempory fantoir
-#                     fantoir='999999',
-#                     zipcode=zip_code,
-#                 )
-#                 validator = Street.validator(**data)
-#                 if not validator.errors:
-#                     item = validator.save()
-#                 else:
-#                     report('Error', validator.errors)
-
-
-def get_lines(file):
-    f = open(file)
-    lines = f.readlines()
-    return lines
-
-
-def get_max_line(file):
-    max_value = sum(1 for line in iter_file(file))
-    return max_value
-
-# ToDo: uncomment and complete when process needed
-# def process_numberFile(numberfile):
-#     pass
+def process_postcode_file(line):
+    if line[50] != 'M':
+        return report('Cedex postcode', line, report.WARNING)
+    insee = line[6:11]
+    post_code = line[89:94]
+    version = 1
+    try:
+        municipality = Municipality.get(Municipality.insee == insee)
+    except Municipality.DoesNotExist:
+        return report('Municipality Not Existing', insee, report.WARNING)
+    postcode, created = PostCode.get_or_create(code=post_code, version=version)
+    if created:
+        report('PostCode Added', postcode, report.NOTICE)
+    if postcode:
+        if municipality not in postcode.municipalities:
+            postcode.municipalities.add(municipality)
+            return report('Association Done', postcode, report.NOTICE)
+        return report('Association Already Exist', postcode, report.WARNING)
